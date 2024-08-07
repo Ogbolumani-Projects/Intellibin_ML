@@ -5,6 +5,7 @@ import os
 import warnings
 warnings.filterwarnings("ignore")
 import numpy as np
+from pydantic import BaseModel
 
 # Load environment variables from .env file
 import pickle
@@ -32,7 +33,29 @@ model_sodeinde = pickle.load(open(file_name_sodeinde, "rb"))
 
 location = {  "eninjoku": model_njoku, "makama": model_makama, "mariere": model_mariere, "mth": model_mth, "sodeinde": model_sodeinde}
 
-former = {  "eninjoku": [-1.57097799, -1.50370353, -1.43642908, -1.36915462, -1.30188016,
+
+def predict_next_hours(hours, model,former):
+  final = []
+  for hour in range(hours//2):
+    reshaped_input = np.array(former).reshape(1, -1)
+    next_prediction = model.named_steps['svr'].predict(reshaped_input).flatten()[0] #model.predict(np.array(former))
+    final.append(next_prediction)
+    former.append(next_prediction)
+    former = former[1:]
+  return model.named_steps['standardscaler'].inverse_transform(np.array(final).reshape(1, -1)).flatten()
+
+
+
+
+@app.get("/")
+def read_root():
+    
+    return {"Hello": "World"}
+
+
+@app.post("/forecast")
+async def get_prediction(request: Request):
+    form = {  "eninjoku": [-1.57097799, -1.50370353, -1.43642908, -1.36915462, -1.30188016,
        -1.26824293, -1.20096847, -1.13369401, -1.06641956, -0.9991451 ,
        -0.93187064, -0.86459618, -0.83095895, -0.76368449, -0.69641003,
        -0.62913558, -0.56186112, -0.49458666, -0.4273122 , -0.39367497,
@@ -58,34 +81,14 @@ former = {  "eninjoku": [-1.57097799, -1.50370353, -1.43642908, -1.36915462, -1.
         1.47848643,  1.51191662,  1.54534682,  1.57877701,  1.6122072 ,
         1.6456374 ,  1.67906759, -1.66395178, -1.63052158]}
 
+    message = await request.json()
 
-@app.get("/")
-def read_root():
-    
-    return {"Hello": "World"}
-
-
-
-
-def predict_next_hours(hours, model,former):
-  final = []
-  for hour in range(hours//2):
-    reshaped_input = np.array(former).reshape(1, -1)
-    next_prediction = model.named_steps['svr'].predict(reshaped_input).flatten()[0] #model.predict(np.array(former))
-    final.append(next_prediction)
-    former.append(next_prediction)
-    former = former[1:]
-    #print(former)
-  return model.named_steps['standardscaler'].inverse_transform(np.array(final).reshape(1, -1)).flatten()
-
-@app.post("/forecast")
-async def get_prediction(request: Request):
-    message = await request.json()    
     hours =  message["hours"]
     location_name = message["location"]
+    
     model = location[location_name]
-    prediction = predict_next_hours(hours, model, former[location_name])
+    prediction = predict_next_hours(hours, model, form[location_name])
 
-    print(prediction)
+    #print("prediction",prediction)
     result = {"response":prediction.tolist()}
     return result #await request.json()
